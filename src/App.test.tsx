@@ -1,0 +1,126 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import App from "./App";
+
+type IpcListener = (event: unknown, ...args: unknown[]) => void;
+
+function mockIpc(actionsList: unknown[] = [], actionsGet: unknown = null) {
+  const listeners: Record<string, IpcListener[]> = {};
+  const invoke = vi.fn((channel: string) => {
+    if (channel === "actions:list") return Promise.resolve(actionsList);
+    if (channel === "actions:get") return Promise.resolve(actionsGet);
+    return Promise.resolve(undefined);
+  });
+  const on = vi.fn((channel: string, listener: IpcListener) => {
+    listeners[channel] = listeners[channel] ?? [];
+    listeners[channel].push(listener);
+  });
+  const off = vi.fn();
+  Object.assign(window, { ipcRenderer: { invoke, on, off, send: vi.fn() } });
+  return {
+    invoke,
+    emit(channel: string, ...args: unknown[]) {
+      for (const listener of listeners[channel] ?? []) {
+        listener({}, ...args);
+      }
+    },
+  };
+}
+
+function sampleAction(id: string, name: string) {
+  return {
+    id,
+    name,
+    targetApp: { name: "Notepad", iconPath: "C:\\notepad.exe" },
+    steps: [{ type: "click" }],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+describe("App", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("test_default_rendersActionsListScreen", async () => {
+    mockIpc([]);
+    render(<App />);
+    expect(
+      await screen.findByText("Nenhuma ação criada ainda.")
+    ).toBeInTheDocument();
+  });
+
+  it("test_onCreate_switchesToWizardCreateScreen", async () => {
+    mockIpc([]);
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
+
+    expect(
+      screen.getByText("Adicionar ação (em construção)")
+    ).toBeInTheDocument();
+  });
+
+  it("test_onEdit_switchesToWizardEditScreenWithRecord", async () => {
+    mockIpc(
+      [sampleAction("a1", "Ação alvo")],
+      { id: "a1", name: "Ação alvo" }
+    );
+    render(<App />);
+
+    await screen.findByText("Ação alvo");
+    fireEvent.click(screen.getByLabelText("Editar Ação alvo"));
+
+    expect(
+      await screen.findByText('Editar "Ação alvo" (em construção)')
+    ).toBeInTheDocument();
+  });
+
+  it("test_onExecute_switchesToExecuteScreenWithId", async () => {
+    mockIpc([sampleAction("a1", "Ação alvo")]);
+    render(<App />);
+
+    fireEvent.click(await screen.findByText("Ação alvo"));
+
+    expect(
+      screen.getByText("Executar ação (em construção)")
+    ).toBeInTheDocument();
+  });
+
+  it("test_returnToList_withMessage_showsToastOnce", async () => {
+    mockIpc([]);
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
+    fireEvent.click(
+      screen.getByText("Simular sucesso (temporário)")
+    );
+
+    expect(await screen.findByText("Nenhuma ação criada ainda.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ação executada com sucesso.")
+    ).toBeInTheDocument();
+  });
+
+  it("test_corruptedDataWarning_surfacesAsToastOnList", async () => {
+    const { emit } = mockIpc([]);
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    emit(
+      "actions:data-warning",
+      "Não foi possível carregar suas ações salvas. Um novo arquivo será criado ao salvar a próxima ação."
+    );
+
+    expect(
+      await screen.findByText(
+        "Não foi possível carregar suas ações salvas. Um novo arquivo será criado ao salvar a próxima ação."
+      )
+    ).toBeInTheDocument();
+  });
+});

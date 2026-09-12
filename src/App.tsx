@@ -51,14 +51,14 @@ function App() {
       screen.mode === "create"
         ? "Adicionar ação (em construção)"
         : `Editar "${screen.action.name}" (em construção)`;
-    return <PlaceholderScreen title={title} onBack={() => returnToList()} />;
+    return <PlaceholderScreen title={title} onBack={returnToList} />;
   }
 
   if (screen.kind === "execute") {
     return (
       <PlaceholderScreen
         title="Executar ação (em construção)"
-        onBack={() => returnToList()}
+        onBack={returnToList}
       />
     );
   }
@@ -78,13 +78,19 @@ function PlaceholderScreen({
   onBack,
 }: {
   title: string;
-  onBack: () => void;
+  onBack: (toastMessage?: string) => void;
 }) {
   return (
     <div className="mx-auto flex h-screen max-w-xl flex-col items-center justify-center gap-4 p-6">
       <p className="text-sm text-muted-foreground">{title}</p>
-      <button className="text-sm underline" onClick={onBack}>
+      <button className="text-sm underline" onClick={() => onBack()}>
         Voltar
+      </button>
+      <button
+        className="text-sm underline"
+        onClick={() => onBack("Ação executada com sucesso.")}
+      >
+        Simular sucesso (temporário)
       </button>
     </div>
   );

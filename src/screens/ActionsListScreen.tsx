@@ -145,6 +145,7 @@ export function ActionsListScreen({
                   <div
                     role="button"
                     tabIndex={0}
+                    data-testid="action-row"
                     onClick={() => onExecute(action.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
@@ -160,7 +161,10 @@ export function ActionsListScreen({
                         <AppWindow className="size-5 shrink-0 text-muted-foreground" />
                       )}
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm font-medium">
+                        <span
+                          data-testid="action-row-name"
+                          className="truncate text-sm font-medium"
+                        >
                           {action.name}
                         </span>
                         <span className="truncate text-xs text-muted-foreground">
@@ -202,7 +206,10 @@ export function ActionsListScreen({
       </div>
 
       {deleteRequest && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 p-6">
+        <div
+          data-testid="delete-confirmation"
+          className="absolute inset-0 flex items-center justify-center bg-black/40 p-6"
+        >
           <div className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border bg-background p-4 shadow-lg">
             <p className="text-sm">
               Excluir a ação "{deleteRequest.name}"? Essa ação não pode ser
