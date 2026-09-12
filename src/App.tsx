@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
-
-interface ActionRecord {
-  id: string;
-  name: string;
-  [key: string]: unknown;
-}
+import {
+  ActionsListScreen,
+  type FullActionRecord,
+} from "./screens/ActionsListScreen";
 
 type Screen =
   | { kind: "actions-list" }
   | { kind: "wizard"; mode: "create" }
-  | { kind: "wizard"; mode: "edit"; actionId: string; action: ActionRecord }
+  | {
+      kind: "wizard";
+      mode: "edit";
+      actionId: string;
+      action: FullActionRecord;
+    }
   | { kind: "execute"; actionId: string };
 
 function App() {
@@ -35,7 +38,7 @@ function App() {
     setScreen({ kind: "wizard", mode: "create" });
   }
 
-  function goToEditWizard(actionId: string, action: ActionRecord) {
+  function goToEditWizard(actionId: string, action: FullActionRecord) {
     setScreen({ kind: "wizard", mode: "edit", actionId, action });
   }
 
@@ -61,7 +64,7 @@ function App() {
   }
 
   return (
-    <ActionsListPlaceholder
+    <ActionsListScreen
       initialToast={pendingToast}
       onCreate={goToCreateWizard}
       onEdit={goToEditWizard}
@@ -82,45 +85,6 @@ function PlaceholderScreen({
       <p className="text-sm text-muted-foreground">{title}</p>
       <button className="text-sm underline" onClick={onBack}>
         Voltar
-      </button>
-    </div>
-  );
-}
-
-interface ActionsListPlaceholderProps {
-  initialToast: string | null;
-  onCreate: () => void;
-  onEdit: (id: string, action: ActionRecord) => void;
-  onExecute: (id: string) => void;
-}
-
-function ActionsListPlaceholder({
-  initialToast,
-  onCreate,
-  onEdit,
-  onExecute,
-}: ActionsListPlaceholderProps) {
-  return (
-    <div className="mx-auto flex h-screen max-w-xl flex-col items-center justify-center gap-3 p-6">
-      <p className="text-sm text-muted-foreground">
-        Lista de ações (em construção)
-      </p>
-      {initialToast && (
-        <p className="text-xs text-muted-foreground">{initialToast}</p>
-      )}
-      <button className="text-sm underline" onClick={onCreate}>
-        Adicionar ação
-      </button>
-      <button
-        className="text-sm underline"
-        onClick={() =>
-          onEdit("stub-id", { id: "stub-id", name: "Ação de exemplo" })
-        }
-      >
-        Editar (exemplo)
-      </button>
-      <button className="text-sm underline" onClick={() => onExecute("stub-id")}>
-        Executar (exemplo)
       </button>
     </div>
   );
