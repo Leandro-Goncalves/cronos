@@ -321,3 +321,113 @@ describe('full validation coverage across the save path', () => {
     expect(result.success).toBe(true)
   })
 })
+
+// F01's side of the cross-feature contracts F02-F08 depend on (spec.md Section 7).
+describe('cross-feature integration', () => {
+  beforeEach(() => {
+    actionsStore.initStore(tmpDir)
+  })
+
+  it('test_integration_savedActionExposesNameAppAndStepCountForListing', async () => {
+    await actionsStore.saveAction(
+      validPayload({
+        name: 'Preencher relatório',
+        targetApp: { name: 'Notepad', path: 'C:\\Notepad.lnk', iconPath: 'C:\\notepad.exe' },
+        steps: [
+          { id: 's1', type: 'click', position: { x: 1, y: 2 } },
+          { id: 's2', type: 'wait', seconds: 3 },
+        ],
+      })
+    )
+
+    const [listed] = actionsStore.listActions()
+    expect(listed.name).toBe('Preencher relatório')
+    expect(listed.targetApp.name).toBe('Notepad')
+    expect(listed.steps).toHaveLength(2)
+  })
+
+  it('test_integration_getActionReturnsExactRecordForEditPrefill', async () => {
+    const saved = await actionsStore.saveAction(
+      validPayload({
+        name: 'Ação de edição',
+        monitorId: 2,
+        monitorBounds: { x: 1920, y: 0, width: 2560, height: 1440 },
+        targetApp: { name: 'Chrome', path: 'C:\\Chrome.lnk', iconPath: 'C:\\chrome.exe' },
+      })
+    )
+
+    const fetched = actionsStore.getAction(saved.action!.id)
+
+    expect(fetched?.name).toBe('Ação de edição')
+    expect(fetched?.monitorId).toBe(2)
+    expect(fetched?.monitorBounds).toEqual({ x: 1920, y: 0, width: 2560, height: 1440 })
+    expect(fetched?.targetApp).toEqual({ name: 'Chrome', path: 'C:\\Chrome.lnk', iconPath: 'C:\\chrome.exe' })
+  })
+
+  it('test_integration_editRoundTripsStepsAndDefaultDelayExactly', async () => {
+    const steps: actionsStore.Step[] = [
+      { id: 's1', type: 'click', position: { x: 5, y: 9 } },
+      { id: 's2', type: 'wait', seconds: 7 },
+    ]
+    const saved = await actionsStore.saveAction(validPayload({ steps, defaultDelaySeconds: 4.5 }))
+
+    actionsStore.initStore(tmpDir)
+    const reloaded = actionsStore.getAction(saved.action!.id)
+    expect(reloaded?.steps).toEqual(steps)
+    expect(reloaded?.defaultDelaySeconds).toBe(4.5)
+
+    const edited = await actionsStore.saveAction({
+      ...validPayload({ steps: reloaded!.steps, defaultDelaySeconds: reloaded!.defaultDelaySeconds }),
+      id: saved.action!.id,
+      name: 'Nome alterado',
+    })
+    expect(edited.action?.steps).toEqual(steps)
+    expect(edited.action?.defaultDelaySeconds).toBe(4.5)
+  })
+
+  it('test_integration_clickStepCoordinateRoundTripsExactly', async () => {
+    const saved = await actionsStore.saveAction(
+      validPayload({ steps: [{ id: 's1', type: 'click', position: { x: 512, y: 340 } }] })
+    )
+
+    const fetched = actionsStore.getAction(saved.action!.id)
+    const clickStep = fetched?.steps[0] as actionsStore.ClickStep
+    expect(clickStep.position).toEqual({ x: 512, y: 340 })
+  })
+
+  it('test_integration_targetAppAndMonitorRoundTripExactlyForCaptureAndExecution', async () => {
+    const targetApp = { name: 'Notepad', path: 'C:\\Notepad.lnk', iconPath: 'C:\\notepad.exe' }
+    const monitorBounds = { x: 0, y: 0, width: 1920, height: 1080 }
+    const saved = await actionsStore.saveAction(validPayload({ monitorId: 3, monitorBounds, targetApp }))
+
+    const fetched = actionsStore.getAction(saved.action!.id)
+    expect(fetched?.targetApp).toEqual(targetApp)
+    expect(fetched?.monitorId).toBe(3)
+    expect(fetched?.monitorBounds).toEqual(monitorBounds)
+  })
+
+  it('test_integration_stepListDeterminesManualFieldsPresence', async () => {
+    const withManual = await actionsStore.saveAction(
+      validPayload({ steps: [{ id: 's1', type: 'manual-type', label: 'Nome' }] })
+    )
+    const withoutManual = await actionsStore.saveAction(
+      validPayload({ steps: [{ id: 's1', type: 'wait', seconds: 2 }] })
+    )
+
+    const hasManual = (action: actionsStore.Action) => action.steps.some((s) => s.type === 'manual-type')
+
+    expect(hasManual(actionsStore.getAction(withManual.action!.id)!)).toBe(true)
+    expect(hasManual(actionsStore.getAction(withoutManual.action!.id)!)).toBe(false)
+  })
+
+  it('test_integration_deleteRemovesActionFromSubsequentList', async () => {
+    const first = await actionsStore.saveAction(validPayload({ name: 'Fica' }))
+    const second = await actionsStore.saveAction(validPayload({ name: 'Sai' }))
+
+    await actionsStore.deleteAction(second.action!.id)
+
+    const remaining = actionsStore.listActions()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].id).toBe(first.action!.id)
+  })
+})
