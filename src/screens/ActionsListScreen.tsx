@@ -1,7 +1,18 @@
 import { AppWindow, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Toast } from "../components/Toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { useAppIcons } from "../hooks/useAppIcons";
 
 export interface ActionSummary {
@@ -112,12 +123,11 @@ export function ActionsListScreen({
         </Button>
       </div>
 
-      <input
+      <Input
         type="text"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Buscar ação..."
-        className="h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       />
 
       <div className="flex-1 overflow-y-auto rounded-lg border border-border">
@@ -205,35 +215,33 @@ export function ActionsListScreen({
         )}
       </div>
 
-      {deleteRequest && (
-        <div
-          data-testid="delete-confirmation"
-          className="absolute inset-0 flex items-center justify-center bg-black/40 p-6"
-        >
-          <div className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border bg-background p-4 shadow-lg">
-            <p className="text-sm">
-              Excluir a ação "{deleteRequest.name}"? Essa ação não pode ser
+      <AlertDialog
+        open={deleteRequest !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteRequest(null);
+        }}
+      >
+        <AlertDialogContent data-testid="delete-confirmation">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir ação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Excluir a ação "{deleteRequest?.name}"? Essa ação não pode ser
               desfeita.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setDeleteRequest(null)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => setDeleteRequest(null)}
-              >
-                Excluir
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteRequest(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => setDeleteRequest(null)}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Toast message={toastMessage} />
     </div>
