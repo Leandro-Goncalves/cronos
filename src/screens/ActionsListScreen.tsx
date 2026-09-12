@@ -45,6 +45,10 @@ function stepCountLabel(count: number): string {
   return count === 1 ? "1 passo" : `${count} passos`;
 }
 
+function actionCountLabel(count: number): string {
+  return count === 1 ? "1 ação salva" : `${count} ações salvas`;
+}
+
 export function ActionsListScreen({
   initialToast,
   onCreate,
@@ -117,7 +121,14 @@ export function ActionsListScreen({
   return (
     <div className="relative mx-auto flex h-screen max-w-xl flex-col gap-4 p-6">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="font-heading text-xl font-semibold">Ações</h1>
+        <div>
+          <h1 className="font-heading text-xl font-semibold">Ações</h1>
+          {!loading && actions.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {actionCountLabel(actions.length)}
+            </p>
+          )}
+        </div>
         <Button size="sm" onClick={onCreate}>
           Adicionar ação
         </Button>
@@ -136,9 +147,11 @@ export function ActionsListScreen({
             Carregando ações...
           </p>
         ) : actions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Nenhuma ação criada ainda.
+          <div className="flex flex-col items-center justify-center gap-1.5 p-8 text-center">
+            <p className="text-sm font-medium">Nenhuma ação criada ainda.</p>
+            <p className="mb-1.5 max-w-xs text-xs text-muted-foreground">
+              Grave uma sequência de cliques e digitações uma vez, depois
+              repita com um clique sempre que precisar.
             </p>
             <Button onClick={onCreate}>Adicionar ação</Button>
           </div>
@@ -162,7 +175,7 @@ export function ActionsListScreen({
                         onExecute(action.id);
                       }
                     }}
-                    className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 hover:bg-muted"
+                    className="group flex cursor-pointer items-center justify-between gap-2 px-3 py-2 hover:bg-muted"
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       {icon ? (
@@ -183,7 +196,7 @@ export function ActionsListScreen({
                         </span>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                       <Button
                         size="icon-sm"
                         variant="ghost"
