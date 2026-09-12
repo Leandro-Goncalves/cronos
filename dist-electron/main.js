@@ -5,6 +5,207 @@ import fs from "node:fs";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
+const PRESS_KEY_ALLOWED_KEYS = [
+  "Enter",
+  "Tab",
+  "Esc",
+  "Backspace",
+  "Delete",
+  "Space",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown"
+];
+const PRESS_KEY_ALLOWED_MODIFIERS = ["ctrl", "alt", "shift"];
+const FILE_NAME = "actions.json";
+const BACKUP_FILE_NAME = "actions.json.bak";
+const WRITE_FAILURE_MESSAGE = "Não foi possível salvar as alterações. Tente novamente.";
+const DELETE_FAILURE_MESSAGE = "Não foi possível excluir a ação. Tente novamente.";
+let actionsFilePath = "";
+let backupFilePath = "";
+let store = [];
+let writeQueue = Promise.resolve();
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+function validateMonitorBounds(bounds) {
+  if (typeof bounds !== "object" || bounds === null) return false;
+  const b = bounds;
+  return isFiniteNumber(b.x) && isFiniteNumber(b.y) && isFiniteNumber(b.width) && isFiniteNumber(b.height);
+}
+function validateTargetApp(targetApp) {
+  if (typeof targetApp !== "object" || targetApp === null) return false;
+  const t = targetApp;
+  return isNonEmptyString(t.name) && isNonEmptyString(t.path) && isNonEmptyString(t.iconPath);
+}
+function validatePosition(position) {
+  if (typeof position !== "object" || position === null) return false;
+  const p = position;
+  return isFiniteNumber(p.x) && isFiniteNumber(p.y);
+}
+function validateStep(step) {
+  if (typeof step !== "object" || step === null) return "Passo inválido.";
+  const s = step;
+  if (!isNonEmptyString(s.id)) return "Passo sem identificador válido.";
+  switch (s.type) {
+    case "click":
+      if (!validatePosition(s.position)) return "Passo de clique com posição inválida.";
+      return null;
+    case "auto-type":
+      if (!validatePosition(s.position)) return "Passo de digitação automática com posição inválida.";
+      if (typeof s.text !== "string" || s.text.length < 1 || s.text.length > 500) {
+        return "O texto do passo de digitação automática deve ter entre 1 e 500 caracteres.";
+      }
+      return null;
+    case "press-key":
+      if (typeof s.key !== "string" || !PRESS_KEY_ALLOWED_KEYS.includes(s.key)) {
+        return "Tecla do passo de pressionar inválida.";
+      }
+      if (!Array.isArray(s.modifiers) || !s.modifiers.every((m) => PRESS_KEY_ALLOWED_MODIFIERS.includes(m))) {
+        return "Modificadores do passo de pressionar inválidos.";
+      }
+      return null;
+    case "wait":
+      if (!isFiniteNumber(s.seconds) || !Number.isInteger(s.seconds) || s.seconds < 1 || s.seconds > 60) {
+        return "O tempo de espera deve ser um número inteiro entre 1 e 60 segundos.";
+      }
+      return null;
+    case "manual-type":
+      if (typeof s.label !== "string" || s.label.length < 1 || s.label.length > 40) {
+        return "O rótulo do passo manual deve ter entre 1 e 40 caracteres.";
+      }
+      if (s.placeholder !== void 0 && (typeof s.placeholder !== "string" || s.placeholder.length > 100)) {
+        return "O texto de exemplo do passo manual deve ter no máximo 100 caracteres.";
+      }
+      return null;
+    default:
+      return "Tipo de passo desconhecido.";
+  }
+}
+function validateActionPayload(payload) {
+  if (!isNonEmptyString(payload.name) || payload.name.trim().length > 60) {
+    return "O nome da ação deve ter entre 1 e 60 caracteres.";
+  }
+  if (!isFiniteNumber(payload.monitorId)) {
+    return "Monitor inválido.";
+  }
+  if (!validateMonitorBounds(payload.monitorBounds)) {
+    return "Os limites do monitor são inválidos.";
+  }
+  if (!validateTargetApp(payload.targetApp)) {
+    return "O aplicativo alvo é inválido.";
+  }
+  if (!isFiniteNumber(payload.defaultDelaySeconds) || payload.defaultDelaySeconds < 0.5 || payload.defaultDelaySeconds > 30) {
+    return "O atraso padrão deve estar entre 0.5 e 30 segundos.";
+  }
+  if (!Array.isArray(payload.steps) || payload.steps.length > 50) {
+    return "A ação pode ter no máximo 50 passos.";
+  }
+  for (const step of payload.steps) {
+    const stepError = validateStep(step);
+    if (stepError) return stepError;
+  }
+  return null;
+}
+function writeFileAtomicSync(filePath, data) {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmpPath = path.join(dir, `${path.basename(filePath)}.tmp-${randomUUID()}`);
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  fs.renameSync(tmpPath, filePath);
+}
+function initStore(dataDir) {
+  actionsFilePath = path.join(dataDir, FILE_NAME);
+  backupFilePath = path.join(dataDir, BACKUP_FILE_NAME);
+  if (!fs.existsSync(actionsFilePath)) {
+    store = [];
+    writeFileAtomicSync(actionsFilePath, store);
+    return { corrupted: false };
+  }
+  try {
+    const raw = fs.readFileSync(actionsFilePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error("actions.json root is not an array");
+    store = parsed;
+    return { corrupted: false };
+  } catch {
+    try {
+      if (fs.existsSync(backupFilePath)) fs.unlinkSync(backupFilePath);
+      fs.renameSync(actionsFilePath, backupFilePath);
+    } catch {
+    }
+    store = [];
+    return { corrupted: true };
+  }
+}
+function enqueueWrite(task) {
+  const result = writeQueue.then(task);
+  writeQueue = result.then(
+    () => void 0,
+    () => void 0
+  );
+  return result;
+}
+function persistStore(nextStore) {
+  const previousStore = store;
+  try {
+    writeFileAtomicSync(actionsFilePath, nextStore);
+    store = nextStore;
+    return true;
+  } catch {
+    store = previousStore;
+    return false;
+  }
+}
+function listActions() {
+  return store;
+}
+function getAction(id) {
+  return store.find((a) => a.id === id) ?? null;
+}
+function saveAction(payload) {
+  return enqueueWrite(() => {
+    const validationError = validateActionPayload(payload);
+    if (validationError) {
+      return { success: false, error: validationError };
+    }
+    if (payload.id) {
+      const existingIndex = store.findIndex((a) => a.id === payload.id);
+      if (existingIndex === -1) {
+        return { success: false, error: "action not found" };
+      }
+      const existing = store[existingIndex];
+      const nextAction2 = { ...payload, id: existing.id, createdAt: existing.createdAt };
+      const nextStore2 = [...store];
+      nextStore2[existingIndex] = nextAction2;
+      if (!persistStore(nextStore2)) return { success: false, error: WRITE_FAILURE_MESSAGE };
+      return { success: true, action: nextAction2 };
+    }
+    const nextAction = { ...payload, id: randomUUID(), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const nextStore = [...store, nextAction];
+    if (!persistStore(nextStore)) return { success: false, error: WRITE_FAILURE_MESSAGE };
+    return { success: true, action: nextAction };
+  });
+}
+function deleteAction(id) {
+  return enqueueWrite(() => {
+    const existingIndex = store.findIndex((a) => a.id === id);
+    if (existingIndex === -1) {
+      return { success: false, error: DELETE_FAILURE_MESSAGE };
+    }
+    const nextStore = store.filter((a) => a.id !== id);
+    if (!persistStore(nextStore)) return { success: false, error: DELETE_FAILURE_MESSAGE };
+    return { success: true };
+  });
+}
 const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path.join(__dirname$1, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
@@ -288,6 +489,11 @@ ipcMain.handle("apps:icon", async (_event, appPath) => {
     return null;
   }
 });
+ipcMain.handle("actions:list", () => listActions());
+ipcMain.handle("actions:get", (_event, id) => getAction(id));
+ipcMain.handle("actions:save", (_event, payload) => saveAction(payload));
+ipcMain.handle("actions:delete", (_event, id) => deleteAction(id));
+let pendingDataWarning = false;
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
@@ -297,6 +503,13 @@ function createWindow() {
   });
   win.webContents.on("did-finish-load", () => {
     win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+    if (pendingDataWarning) {
+      pendingDataWarning = false;
+      win == null ? void 0 : win.webContents.send(
+        "actions:data-warning",
+        "Não foi possível carregar suas ações salvas. Um novo arquivo será criado ao salvar a próxima ação."
+      );
+    }
   });
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
@@ -315,7 +528,11 @@ app.on("activate", () => {
     createWindow();
   }
 });
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  const initResult = initStore(app.getPath("userData"));
+  pendingDataWarning = initResult.corrupted;
+  createWindow();
+});
 export {
   MAIN_DIST,
   RENDERER_DIST,

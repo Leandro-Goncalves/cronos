@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
+import * as actionsStore from './actionsStore'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -347,6 +348,13 @@ ipcMain.handle('apps:icon', async (_event, appPath: string) => {
   }
 })
 
+ipcMain.handle('actions:list', () => actionsStore.listActions())
+ipcMain.handle('actions:get', (_event, id: string) => actionsStore.getAction(id))
+ipcMain.handle('actions:save', (_event, payload: actionsStore.ActionSavePayload) => actionsStore.saveAction(payload))
+ipcMain.handle('actions:delete', (_event, id: string) => actionsStore.deleteAction(id))
+
+let pendingDataWarning = false
+
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
@@ -358,6 +366,13 @@ function createWindow() {
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
+    if (pendingDataWarning) {
+      pendingDataWarning = false
+      win?.webContents.send(
+        'actions:data-warning',
+        'Não foi possível carregar suas ações salvas. Um novo arquivo será criado ao salvar a próxima ação.'
+      )
+    }
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -386,4 +401,8 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  const initResult = actionsStore.initStore(app.getPath('userData'))
+  pendingDataWarning = initResult.corrupted
+  createWindow()
+})
