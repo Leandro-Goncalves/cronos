@@ -3,6 +3,10 @@ import {
   ActionsListScreen,
   type FullActionRecord,
 } from "./screens/ActionsListScreen";
+import {
+  ExecuteActionScreen,
+  type ExecutionRequest,
+} from "./screens/ExecuteActionScreen";
 
 type Screen =
   | { kind: "actions-list" }
@@ -13,7 +17,8 @@ type Screen =
       actionId: string;
       action: FullActionRecord;
     }
-  | { kind: "execute"; actionId: string };
+  | { kind: "execute"; actionId: string }
+  | { kind: "running"; request: ExecutionRequest };
 
 function App() {
   const [screen, setScreen] = useState<Screen>({ kind: "actions-list" });
@@ -46,6 +51,10 @@ function App() {
     setScreen({ kind: "execute", actionId });
   }
 
+  function goToRunning(request: ExecutionRequest) {
+    setScreen({ kind: "running", request });
+  }
+
   if (screen.kind === "wizard") {
     const title =
       screen.mode === "create"
@@ -56,8 +65,18 @@ function App() {
 
   if (screen.kind === "execute") {
     return (
+      <ExecuteActionScreen
+        actionId={screen.actionId}
+        onConfirm={goToRunning}
+        onCancel={returnToList}
+      />
+    );
+  }
+
+  if (screen.kind === "running") {
+    return (
       <PlaceholderScreen
-        title="Executar ação (em construção)"
+        title="Executando ação (em construção)"
         onBack={returnToList}
       />
     );
