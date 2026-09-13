@@ -31,6 +31,26 @@ const oneApp = [
   { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
 ];
 
+const otherApp = {
+  name: "Calculator",
+  path: "C:\\Calc.lnk",
+  iconPath: "C:\\calc.exe",
+};
+
+const warningText =
+  "Alterar o app ou monitor pode fazer com que posições já capturadas fiquem incorretas.";
+
+function editableAction(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "a1",
+    name: "Preencher relatório",
+    monitorId: 1,
+    monitorBounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+    ...overrides,
+  };
+}
+
 async function fillNameAndApp(name: string) {
   fireEvent.change(screen.getByLabelText("Nome da ação"), {
     target: { value: name },
@@ -141,5 +161,111 @@ describe("BasicInfoScreen", () => {
     await fillNameAndApp("a".repeat(61));
 
     expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+  });
+
+  it("test_editMode_prefillsNameMonitorAndAppFromExistingAction", async () => {
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+
+    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+
+    expect(await screen.findByLabelText("Nome da ação")).toHaveValue(
+      "Preencher relatório"
+    );
+    expect(await screen.findByLabelText("Monitor")).toHaveTextContent(
+      "Monitor 1 (principal)"
+    );
+    expect(await screen.findByTestId("app-picker-row")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+  });
+
+  it("test_editMode_appNoLongerInstalled_stillPrefillsSelectionWithoutHighlight", async () => {
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => [otherApp],
+      "apps:icon": () => null,
+    });
+
+    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+
+    await screen.findByText("Calculator");
+    expect(screen.getByTestId("app-picker-row")).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeEnabled();
+  });
+
+  it("test_editMode_changingAppShowsWarningBanner", async () => {
+    mockIpc({
+      "displays:list": () => oneMonitor,
+      "apps:list": () => [otherApp],
+      "apps:icon": () => null,
+    });
+
+    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+
+    expect(screen.queryByText(warningText)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByText("Calculator"));
+
+    expect(await screen.findByText(warningText)).toBeInTheDocument();
+  });
+
+  it("test_editMode_changingMonitorShowsWarningBanner", async () => {
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+
+    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+
+    await screen.findByText("Notepad");
+    expect(screen.queryByText(warningText)).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Monitor"));
+    await user.click(await screen.findByRole("option", { name: "Monitor 2" }));
+
+    expect(await screen.findByText(warningText)).toBeInTheDocument();
+  });
+
+  it("test_editMode_revertingToOriginalValuesHidesWarningBanner", async () => {
+    mockIpc({
+      "displays:list": () => oneMonitor,
+      "apps:list": () => [...oneApp, otherApp],
+      "apps:icon": () => null,
+    });
+
+    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+
+    await screen.findByText("Notepad");
+    fireEvent.click(screen.getByText("Calculator"));
+    expect(await screen.findByText(warningText)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Notepad"));
+    expect(screen.queryByText(warningText)).not.toBeInTheDocument();
+  });
+
+  it("test_createMode_neverShowsWarningBanner", async () => {
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+
+    render(<BasicInfoScreen mode="create" />);
+    await fillNameAndApp("Minha ação");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Monitor"));
+    await user.click(await screen.findByRole("option", { name: "Monitor 2" }));
+
+    expect(screen.queryByText(warningText)).not.toBeInTheDocument();
   });
 });

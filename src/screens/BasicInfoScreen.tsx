@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { TriangleAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { AppPicker, type AppInfo } from "../components/AppPicker";
+import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -27,18 +29,38 @@ interface DisplayInfo {
 
 const NAME_MAX_LENGTH = 60;
 
-export interface BasicInfoScreenProps {
-  mode: "create" | "edit";
+export interface EditableActionBasicInfo {
+  id: string;
+  name: string;
+  monitorId: number;
+  monitorBounds: MonitorBounds;
+  targetApp: AppInfo;
 }
 
-export function BasicInfoScreen({ mode }: BasicInfoScreenProps) {
-  const [name, setName] = useState("");
+export interface BasicInfoScreenProps {
+  mode: "create" | "edit";
+  action?: EditableActionBasicInfo;
+}
+
+export function BasicInfoScreen({ mode, action }: BasicInfoScreenProps) {
+  const [name, setName] = useState(mode === "edit" ? action?.name ?? "" : "");
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
-  const [monitorId, setMonitorId] = useState<number | null>(null);
-  const [monitorBounds, setMonitorBounds] = useState<MonitorBounds | null>(
-    null
+  const [monitorId, setMonitorId] = useState<number | null>(
+    mode === "edit" ? action?.monitorId ?? null : null
   );
-  const [selectedApp, setSelectedApp] = useState<AppInfo | null>(null);
+  const [monitorBounds, setMonitorBounds] = useState<MonitorBounds | null>(
+    mode === "edit" ? action?.monitorBounds ?? null : null
+  );
+  const [selectedApp, setSelectedApp] = useState<AppInfo | null>(
+    mode === "edit" ? action?.targetApp ?? null : null
+  );
+
+  const originalMonitorId = useRef(
+    mode === "edit" ? action?.monitorId ?? null : null
+  );
+  const originalAppPath = useRef(
+    mode === "edit" ? action?.targetApp.path ?? null : null
+  );
 
   useEffect(() => {
     window.ipcRenderer
@@ -59,6 +81,10 @@ export function BasicInfoScreen({ mode }: BasicInfoScreenProps) {
     displays.length === 0 ? false : displays.length === 1 ? true : monitorId !== null;
   const canConfirm =
     isNameValid && selectedApp !== null && monitorValid && monitorBounds !== null;
+  const showWarningBanner =
+    mode === "edit" &&
+    (monitorId !== originalMonitorId.current ||
+      (selectedApp?.path ?? null) !== originalAppPath.current);
 
   function handleSelectMonitor(value: string | null) {
     if (value === null) return;
@@ -87,6 +113,10 @@ export function BasicInfoScreen({ mode }: BasicInfoScreenProps) {
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="basic-info-monitor">Monitor</Label>
           <Select
+            items={displays.map((display) => ({
+              label: display.label,
+              value: String(display.id),
+            }))}
             value={monitorId !== null ? String(monitorId) : null}
             onValueChange={handleSelectMonitor}
           >
@@ -110,6 +140,16 @@ export function BasicInfoScreen({ mode }: BasicInfoScreenProps) {
         <Label>Aplicativo</Label>
         <AppPicker value={selectedApp} onChange={setSelectedApp} />
       </div>
+
+      {showWarningBanner && (
+        <Alert>
+          <TriangleAlert />
+          <AlertDescription>
+            Alterar o app ou monitor pode fazer com que posições já
+            capturadas fiquem incorretas.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="mt-auto flex justify-end gap-2">
         <Button variant="outline">Cancelar</Button>
