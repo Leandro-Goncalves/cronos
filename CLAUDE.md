@@ -6,6 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Always use that skills when working with this codebase:
 
-- playwright-cli
+- electron-playwright-cli
 - frontend-design
 - shadcn

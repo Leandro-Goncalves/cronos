@@ -8,6 +8,10 @@ import {
   type DraftActionBasicInfo,
   type EditableActionBasicInfo,
 } from "./screens/BasicInfoScreen";
+import {
+  ExecuteActionScreen,
+  type ExecutionRequest,
+} from "./screens/ExecuteActionScreen";
 
 type Screen =
   | { kind: "actions-list" }
@@ -24,7 +28,8 @@ type Screen =
       actionId?: string;
       draft: DraftActionBasicInfo;
     }
-  | { kind: "execute"; actionId: string };
+  | { kind: "execute"; actionId: string }
+  | { kind: "running"; request: ExecutionRequest };
 
 function App() {
   const [screen, setScreen] = useState<Screen>({ kind: "actions-list" });
@@ -55,6 +60,10 @@ function App() {
 
   function goToExecute(actionId: string) {
     setScreen({ kind: "execute", actionId });
+  }
+
+  function goToRunning(request: ExecutionRequest) {
+    setScreen({ kind: "running", request });
   }
 
   if (screen.kind === "wizard") {
@@ -90,8 +99,18 @@ function App() {
 
   if (screen.kind === "execute") {
     return (
+      <ExecuteActionScreen
+        actionId={screen.actionId}
+        onConfirm={goToRunning}
+        onCancel={returnToList}
+      />
+    );
+  }
+
+  if (screen.kind === "running") {
+    return (
       <PlaceholderScreen
-        title="Executar ação (em construção)"
+        title="Executando ação (em construção)"
         onBack={returnToList}
       />
     );
