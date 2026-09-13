@@ -255,6 +255,35 @@ describe("ActionsListScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("test_deleteConfirm_disablesButtonsWhileRequestInFlight", async () => {
+    let resolveDelete: (value: { success: boolean }) => void;
+    const pending = new Promise<{ success: boolean }>((resolve) => {
+      resolveDelete = resolve;
+    });
+    mockIpc({
+      "actions:list": () => [makeAction({ id: "a1", name: "Ação para excluir" })],
+      "actions:delete": () => pending,
+    });
+
+    render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+
+    await screen.findByText("Ação para excluir");
+    fireEvent.click(screen.getByLabelText("Excluir Ação para excluir"));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Excluir" })).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+
+    resolveDelete!({ success: true });
+    await waitFor(() => {
+      expect(screen.queryByTestId("delete-confirmation")).not.toBeInTheDocument();
+    });
+  });
+
   it("test_integration_deletedActionRemovedFromF01StoreNoLongerAppearsInF02List", async () => {
     let call = 0;
     mockIpc({

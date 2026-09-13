@@ -64,6 +64,7 @@ export function ActionsListScreen({
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(
     null
   );
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (initialToast) {
@@ -119,8 +120,9 @@ export function ActionsListScreen({
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteRequest) return;
+    if (!deleteRequest || isDeleting) return;
     const { id, name } = deleteRequest;
+    setIsDeleting(true);
     let result: { success: boolean } | undefined;
     try {
       result = await window.ipcRenderer.invoke("actions:delete", id);
@@ -133,6 +135,7 @@ export function ActionsListScreen({
     } else {
       setToastMessage("Não foi possível excluir a ação. Tente novamente.");
     }
+    setIsDeleting(false);
     setDeleteRequest(null);
   }
 
@@ -261,10 +264,17 @@ export function ActionsListScreen({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteRequest(null)}>
+            <AlertDialogCancel
+              disabled={isDeleting}
+              onClick={() => setDeleteRequest(null)}
+            >
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDeleteConfirm}>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={handleDeleteConfirm}
+            >
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
