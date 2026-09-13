@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import { screen } from 'electron'
+import type { BrowserWindow } from 'electron'
+import { getAction } from './actionsStore'
 import type { Step } from './actionsStore'
 import { simulateClick, simulateKeyPress, simulateTypeText } from './inputSimulation'
 
@@ -77,4 +81,87 @@ export async function dispatchStep(
     default:
       return true
   }
+}
+
+export interface ExecutionRequest {
+  actionId: string
+  manualValues: Record<string, string>
+}
+
+export interface ExecutionResult {
+  success: boolean
+  actionName?: string
+  errorMessage?: string
+}
+
+export type OpenAppOnDisplayFn = (
+  appPath: string,
+  iconPath: string,
+  displayBounds?: DisplayBounds
+) => Promise<boolean>
+
+export interface RunExecutionDeps {
+  getWindow: () => BrowserWindow | null
+  openAppOnDisplay: OpenAppOnDisplayFn
+}
+
+const ACTION_NOT_FOUND_MESSAGE = 'Não foi possível executar a ação: ela pode ter sido excluída.'
+const MONITOR_NOT_FOUND_MESSAGE =
+  'O monitor configurado para esta ação não foi encontrado. Edite a ação para selecionar outro monitor.'
+
+/**
+ * Runs the full F08 execution orchestration: loads the action, validates its configured monitor
+ * still exists (before minimizing, so Cronos stays visible on that failure per the PRD), minimizes
+ * Cronos, opens/focuses the target app, runs every step in saved order applying the default delay
+ * between them, then restores Cronos and reports the final result.
+ */
+export async function runExecution(request: ExecutionRequest, deps: RunExecutionDeps): Promise<ExecutionResult> {
+  const action = getAction(request.actionId)
+  if (!action) {
+    return { success: false, errorMessage: ACTION_NOT_FOUND_MESSAGE }
+  }
+
+  const currentDisplay = screen.getAllDisplays().find((display) => display.id === action.monitorId)
+  if (!currentDisplay) {
+    return { success: false, errorMessage: MONITOR_NOT_FOUND_MESSAGE }
+  }
+
+  const bounds = currentDisplay.bounds as DisplayBounds
+  const win = deps.getWindow()
+  win?.minimize()
+
+  function restoreCronos() {
+    win?.restore()
+    win?.show()
+  }
+
+  if (!fs.existsSync(action.targetApp.path)) {
+    restoreCronos()
+    return { success: false, errorMessage: `Não foi possível abrir ${action.targetApp.name}.` }
+  }
+
+  const opened = await deps.openAppOnDisplay(action.targetApp.path, action.targetApp.iconPath, bounds)
+  if (!opened) {
+    restoreCronos()
+    return { success: false, errorMessage: `Não foi possível encontrar a janela de ${action.targetApp.name}.` }
+  }
+
+  for (let i = 0; i < action.steps.length; i++) {
+    if (i > 0) {
+      await delay(action.defaultDelaySeconds * 1000)
+    }
+
+    const step = action.steps[i]
+    const succeeded = await dispatchStep(step, bounds, request.manualValues)
+    if (!succeeded) {
+      restoreCronos()
+      return {
+        success: false,
+        errorMessage: `A execução foi interrompida no passo ${i + 1}: ${STEP_TYPE_LABELS[step.type]}.`,
+      }
+    }
+  }
+
+  restoreCronos()
+  return { success: true, actionName: action.name }
 }
