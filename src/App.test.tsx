@@ -6,6 +6,14 @@ import App from "./App";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
+const oneMonitor = [
+  { id: 1, label: "Monitor 1 (principal)", bounds: { x: 0, y: 0, width: 1920, height: 1080 } },
+];
+
+const oneApp = [
+  { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+];
+
 function mockIpc(
   actionsList: unknown[] = [],
   actionsGet: unknown = null,
@@ -19,6 +27,9 @@ function mockIpc(
       if (id in actionsGetById) return Promise.resolve(actionsGetById[id]);
       return Promise.resolve(actionsGet);
     }
+    if (channel === "displays:list") return Promise.resolve(oneMonitor);
+    if (channel === "apps:list") return Promise.resolve(oneApp);
+    if (channel === "apps:icon") return Promise.resolve(null);
     return Promise.resolve(undefined);
   });
   const on = vi.fn((channel: string, listener: IpcListener) => {
@@ -47,6 +58,16 @@ function sampleAction(id: string, name: string) {
   };
 }
 
+function storedFullRecord(id: string, name: string) {
+  return {
+    id,
+    name,
+    monitorId: 1,
+    monitorBounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+  };
+}
+
 describe("App", () => {
   afterEach(() => {
     cleanup();
@@ -61,31 +82,66 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("test_onCreate_switchesToWizardCreateScreen", async () => {
+  it("test_onCreate_rendersBasicInfoScreenInCreateMode", async () => {
     mockIpc([]);
     render(<App />);
 
     await screen.findByText("Nenhuma ação criada ainda.");
     fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
 
-    expect(
-      screen.getByText("Adicionar ação (em construção)")
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Nome da ação")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
   });
 
-  it("test_onEdit_switchesToWizardEditScreenWithRecord", async () => {
+  it("test_onEdit_rendersBasicInfoScreenPrefilledFromRecord", async () => {
     mockIpc(
       [sampleAction("a1", "Ação alvo")],
-      { id: "a1", name: "Ação alvo" }
+      storedFullRecord("a1", "Ação alvo")
     );
     render(<App />);
 
     await screen.findByText("Ação alvo");
     fireEvent.click(screen.getByLabelText("Editar Ação alvo"));
 
+    expect(await screen.findByLabelText("Nome da ação")).toHaveValue(
+      "Ação alvo"
+    );
+  });
+
+  it("test_basicInfoConfirm_switchesToStepsBuilderPlaceholderWithDraft", async () => {
+    mockIpc([]);
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
+
+    fireEvent.change(await screen.findByLabelText("Nome da ação"), {
+      target: { value: "Minha ação" },
+    });
+    fireEvent.click(await screen.findByText("Notepad"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
     expect(
-      await screen.findByText('Editar "Ação alvo" (em construção)')
+      await screen.findByText("Passos da ação (em construção)")
     ).toBeInTheDocument();
+  });
+
+  it("test_basicInfoCancel_returnsToActionsListWithoutToast", async () => {
+    mockIpc([]);
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
+
+    await screen.findByLabelText("Nome da ação");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(
+      await screen.findByText("Nenhuma ação criada ainda.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/sucesso/)
+    ).not.toBeInTheDocument();
   });
 
   it("test_onExecute_actionWithManualSteps_rendersExecuteActionScreen", async () => {
@@ -166,16 +222,20 @@ describe("App", () => {
   });
 
   it("test_returnToList_withMessage_showsToastOnce", async () => {
-    mockIpc([]);
+    mockIpc([sampleAction("a1", "Ação alvo")], null, {
+      a1: {
+        id: "a1",
+        name: "Ação alvo",
+        steps: [{ id: "s1", type: "click" }],
+      },
+    });
     render(<App />);
 
-    await screen.findByText("Nenhuma ação criada ainda.");
-    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
-    fireEvent.click(
-      screen.getByText("Simular sucesso (temporário)")
-    );
+    fireEvent.click(await screen.findByText("Ação alvo"));
+    await screen.findByText("Executando ação (em construção)");
+    fireEvent.click(screen.getByText("Simular sucesso (temporário)"));
 
-    expect(await screen.findByText("Nenhuma ação criada ainda.")).toBeInTheDocument();
+    expect(await screen.findByText("Ação alvo")).toBeInTheDocument();
     expect(
       screen.getByText("Ação executada com sucesso.")
     ).toBeInTheDocument();
@@ -196,5 +256,22 @@ describe("App", () => {
         "Não foi possível carregar suas ações salvas. Um novo arquivo será criado ao salvar a próxima ação."
       )
     ).toBeInTheDocument();
+  });
+
+  it("test_integration_editPrefillMatchesF01StoredRecordExactly", async () => {
+    const storedRecord = storedFullRecord("a1", "Preencher relatório");
+    mockIpc([sampleAction("a1", "Preencher relatório")], storedRecord);
+    render(<App />);
+
+    await screen.findByText("Preencher relatório");
+    fireEvent.click(screen.getByLabelText("Editar Preencher relatório"));
+
+    expect(await screen.findByLabelText("Nome da ação")).toHaveValue(
+      "Preencher relatório"
+    );
+    expect(await screen.findByTestId("app-picker-row")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
   });
 });
