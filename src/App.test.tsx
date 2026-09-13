@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -17,7 +23,8 @@ const oneApp = [
 function mockIpc(
   actionsList: unknown[] = [],
   actionsGet: unknown = null,
-  actionsGetById: Record<string, unknown> = {}
+  actionsGetById: Record<string, unknown> = {},
+  executionResult: unknown = { success: true, actionName: "Ação alvo" }
 ) {
   const listeners: Record<string, IpcListener[]> = {};
   const invoke = vi.fn((channel: string, ...args: unknown[]) => {
@@ -30,6 +37,7 @@ function mockIpc(
     if (channel === "displays:list") return Promise.resolve(oneMonitor);
     if (channel === "apps:list") return Promise.resolve(oneApp);
     if (channel === "apps:icon") return Promise.resolve(null);
+    if (channel === "execution:run") return Promise.resolve(executionResult);
     return Promise.resolve(undefined);
   });
   const on = vi.fn((channel: string, listener: IpcListener) => {
@@ -163,31 +171,44 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("test_onExecute_actionWithZeroManualSteps_reachesRunningPlaceholderImmediately", async () => {
-    mockIpc([sampleAction("a1", "Ação alvo")], null, {
-      a1: {
-        id: "a1",
-        name: "Ação alvo",
-        steps: [{ id: "s1", type: "click" }],
+  it("test_onExecute_actionWithZeroManualSteps_reachesExecutionRunImmediately", async () => {
+    const { invoke } = mockIpc(
+      [sampleAction("a1", "Ação alvo")],
+      null,
+      {
+        a1: {
+          id: "a1",
+          name: "Ação alvo",
+          steps: [{ id: "s1", type: "click" }],
+        },
       },
-    });
+      new Promise(() => {}) // never resolves, so we can assert the invoke call itself
+    );
     render(<App />);
 
     fireEvent.click(await screen.findByText("Ação alvo"));
 
-    expect(
-      await screen.findByText("Executando ação (em construção)")
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("execution:run", {
+        actionId: "a1",
+        manualValues: {},
+      })
+    );
   });
 
-  it("test_executeScreenConfirm_carriesExecutionRequestToRunningPlaceholder", async () => {
-    mockIpc([sampleAction("a1", "Ação alvo")], null, {
-      a1: {
-        id: "a1",
-        name: "Ação alvo",
-        steps: [{ id: "s1", type: "manual-type", label: "Nome" }],
+  it("test_executeScreenConfirm_carriesExecutionRequestToExecutionRun", async () => {
+    const { invoke } = mockIpc(
+      [sampleAction("a1", "Ação alvo")],
+      null,
+      {
+        a1: {
+          id: "a1",
+          name: "Ação alvo",
+          steps: [{ id: "s1", type: "manual-type", label: "Nome" }],
+        },
       },
-    });
+      new Promise(() => {})
+    );
     render(<App />);
 
     fireEvent.click(await screen.findByText("Ação alvo"));
@@ -196,13 +217,16 @@ describe("App", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Executar" }));
 
-    expect(
-      await screen.findByText("Executando ação (em construção)")
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("execution:run", {
+        actionId: "a1",
+        manualValues: { s1: "João" },
+      })
+    );
   });
 
   it("test_executeScreenCancel_returnsToActionsListWithoutRunning", async () => {
-    mockIpc([sampleAction("a1", "Ação alvo")], null, {
+    const { invoke } = mockIpc([sampleAction("a1", "Ação alvo")], null, {
       a1: {
         id: "a1",
         name: "Ação alvo",
@@ -216,28 +240,32 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
 
     expect(await screen.findByText("Ação alvo")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Executando ação (em construção)")
-    ).not.toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith(
+      "execution:run",
+      expect.anything()
+    );
   });
 
   it("test_returnToList_withMessage_showsToastOnce", async () => {
-    mockIpc([sampleAction("a1", "Ação alvo")], null, {
-      a1: {
-        id: "a1",
-        name: "Ação alvo",
-        steps: [{ id: "s1", type: "click" }],
+    mockIpc(
+      [sampleAction("a1", "Ação alvo")],
+      null,
+      {
+        a1: {
+          id: "a1",
+          name: "Ação alvo",
+          steps: [{ id: "s1", type: "click" }],
+        },
       },
-    });
+      { success: true, actionName: "Ação alvo" }
+    );
     render(<App />);
 
     fireEvent.click(await screen.findByText("Ação alvo"));
-    await screen.findByText("Executando ação (em construção)");
-    fireEvent.click(screen.getByText("Simular sucesso (temporário)"));
 
     expect(await screen.findByText("Ação alvo")).toBeInTheDocument();
     expect(
-      screen.getByText("Ação executada com sucesso.")
+      screen.getByText("Ação 'Ação alvo' executada com sucesso.")
     ).toBeInTheDocument();
   });
 
