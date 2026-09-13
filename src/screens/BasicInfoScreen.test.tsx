@@ -72,7 +72,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     await screen.findByText("Notepad");
     expect(screen.queryByLabelText("Monitor")).not.toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     expect(await screen.findByLabelText("Monitor")).toBeInTheDocument();
     const user = userEvent.setup();
@@ -101,7 +101,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     await fillNameAndApp("Minha ação");
 
@@ -116,7 +116,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     const confirmButton = await screen.findByRole("button", { name: "Confirmar" });
     expect(confirmButton).toBeDisabled();
@@ -144,7 +144,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     await fillNameAndApp("   ");
 
     expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
@@ -157,7 +157,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     await fillNameAndApp("a".repeat(61));
 
     expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
@@ -170,7 +170,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+    render(<BasicInfoScreen mode="edit" action={editableAction()} onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     expect(await screen.findByLabelText("Nome da ação")).toHaveValue(
       "Preencher relatório"
@@ -191,7 +191,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+    render(<BasicInfoScreen mode="edit" action={editableAction()} onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     await screen.findByText("Calculator");
     expect(screen.getByTestId("app-picker-row")).toHaveAttribute(
@@ -208,7 +208,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+    render(<BasicInfoScreen mode="edit" action={editableAction()} onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     expect(screen.queryByText(warningText)).not.toBeInTheDocument();
     fireEvent.click(await screen.findByText("Calculator"));
@@ -223,7 +223,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+    render(<BasicInfoScreen mode="edit" action={editableAction()} onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     await screen.findByText("Notepad");
     expect(screen.queryByText(warningText)).not.toBeInTheDocument();
@@ -242,7 +242,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="edit" action={editableAction()} />);
+    render(<BasicInfoScreen mode="edit" action={editableAction()} onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     await screen.findByText("Notepad");
     fireEvent.click(screen.getByText("Calculator"));
@@ -259,7 +259,7 @@ describe("BasicInfoScreen", () => {
       "apps:icon": () => null,
     });
 
-    render(<BasicInfoScreen mode="create" />);
+    render(<BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={vi.fn()} />);
     await fillNameAndApp("Minha ação");
 
     const user = userEvent.setup();
@@ -267,5 +267,111 @@ describe("BasicInfoScreen", () => {
     await user.click(await screen.findByRole("option", { name: "Monitor 2" }));
 
     expect(screen.queryByText(warningText)).not.toBeInTheDocument();
+  });
+
+  it("test_confirm_invokesOnConfirmWithExactDraftShape", async () => {
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+    const onConfirm = vi.fn();
+
+    render(
+      <BasicInfoScreen mode="create" onConfirm={onConfirm} onCancel={vi.fn()} />
+    );
+    await fillNameAndApp("Minha ação");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Monitor"));
+    await user.click(await screen.findByRole("option", { name: "Monitor 2" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    expect(onConfirm).toHaveBeenCalledWith({
+      name: "Minha ação",
+      monitorId: 2,
+      monitorBounds: { x: 1920, y: 0, width: 1920, height: 1080 },
+      targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+    });
+  });
+
+  it("test_cancel_invokesOnCancelAndMakesNoIpcMutationCalls", async () => {
+    const invoke = mockIpc({
+      "displays:list": () => oneMonitor,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+    const onCancel = vi.fn();
+
+    render(
+      <BasicInfoScreen mode="create" onConfirm={vi.fn()} onCancel={onCancel} />
+    );
+    fireEvent.change(screen.getByLabelText("Nome da ação"), {
+      target: { value: "Rascunho" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith("actions:save", expect.anything());
+  });
+
+  it("test_integration_editPrefillMatchesF01StoredRecordExactly", async () => {
+    const storedRecord = editableAction({
+      name: "Ação real",
+      monitorId: 2,
+      monitorBounds: { x: 1920, y: 0, width: 1920, height: 1080 },
+      targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+    });
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+
+    render(
+      <BasicInfoScreen
+        mode="edit"
+        action={storedRecord}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByLabelText("Nome da ação")).toHaveValue("Ação real");
+    expect(await screen.findByLabelText("Monitor")).toHaveTextContent("Monitor 2");
+    expect(await screen.findByTestId("app-picker-row")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+  });
+
+  it("test_integration_confirmedDraftCarriesExactTargetAppAndMonitorForF04AndF08", async () => {
+    mockIpc({
+      "displays:list": () => twoMonitors,
+      "apps:list": () => oneApp,
+      "apps:icon": () => null,
+    });
+    const onConfirm = vi.fn();
+
+    render(
+      <BasicInfoScreen
+        mode="edit"
+        action={editableAction({ monitorId: 1 })}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />
+    );
+
+    await screen.findByText("Notepad");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    expect(onConfirm).toHaveBeenCalledWith({
+      name: "Preencher relatório",
+      monitorId: 1,
+      monitorBounds: { x: 0, y: 0, width: 1920, height: 1080 },
+      targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+    });
   });
 });

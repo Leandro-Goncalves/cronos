@@ -37,12 +37,26 @@ export interface EditableActionBasicInfo {
   targetApp: AppInfo;
 }
 
+export interface DraftActionBasicInfo {
+  name: string;
+  monitorId: number;
+  monitorBounds: MonitorBounds;
+  targetApp: AppInfo;
+}
+
 export interface BasicInfoScreenProps {
   mode: "create" | "edit";
   action?: EditableActionBasicInfo;
+  onConfirm: (draft: DraftActionBasicInfo) => void;
+  onCancel: () => void;
 }
 
-export function BasicInfoScreen({ mode, action }: BasicInfoScreenProps) {
+export function BasicInfoScreen({
+  mode,
+  action,
+  onConfirm,
+  onCancel,
+}: BasicInfoScreenProps) {
   const [name, setName] = useState(mode === "edit" ? action?.name ?? "" : "");
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const [monitorId, setMonitorId] = useState<number | null>(
@@ -91,6 +105,16 @@ export function BasicInfoScreen({ mode, action }: BasicInfoScreenProps) {
     const id = Number(value);
     setMonitorId(id);
     setMonitorBounds(displays.find((display) => display.id === id)?.bounds ?? null);
+  }
+
+  function handleConfirm() {
+    if (!canConfirm || !selectedApp || monitorId === null || !monitorBounds) return;
+    onConfirm({
+      name: trimmedName,
+      monitorId,
+      monitorBounds,
+      targetApp: selectedApp,
+    });
   }
 
   return (
@@ -152,8 +176,12 @@ export function BasicInfoScreen({ mode, action }: BasicInfoScreenProps) {
       )}
 
       <div className="mt-auto flex justify-end gap-2">
-        <Button variant="outline">Cancelar</Button>
-        <Button disabled={!canConfirm}>Confirmar</Button>
+        <Button variant="outline" onClick={onCancel}>
+          Cancelar
+        </Button>
+        <Button disabled={!canConfirm} onClick={handleConfirm}>
+          Confirmar
+        </Button>
       </div>
     </div>
   );

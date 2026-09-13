@@ -3,6 +3,11 @@ import {
   ActionsListScreen,
   type FullActionRecord,
 } from "./screens/ActionsListScreen";
+import {
+  BasicInfoScreen,
+  type DraftActionBasicInfo,
+  type EditableActionBasicInfo,
+} from "./screens/BasicInfoScreen";
 
 type Screen =
   | { kind: "actions-list" }
@@ -12,6 +17,12 @@ type Screen =
       mode: "edit";
       actionId: string;
       action: FullActionRecord;
+    }
+  | {
+      kind: "steps-builder";
+      mode: "create" | "edit";
+      actionId?: string;
+      draft: DraftActionBasicInfo;
     }
   | { kind: "execute"; actionId: string };
 
@@ -47,11 +58,34 @@ function App() {
   }
 
   if (screen.kind === "wizard") {
-    const title =
-      screen.mode === "create"
-        ? "Adicionar ação (em construção)"
-        : `Editar "${screen.action.name}" (em construção)`;
-    return <PlaceholderScreen title={title} onBack={returnToList} />;
+    return (
+      <BasicInfoScreen
+        mode={screen.mode}
+        action={
+          screen.mode === "edit"
+            ? (screen.action as unknown as EditableActionBasicInfo)
+            : undefined
+        }
+        onConfirm={(draft) =>
+          setScreen({
+            kind: "steps-builder",
+            mode: screen.mode,
+            actionId: screen.mode === "edit" ? screen.actionId : undefined,
+            draft,
+          })
+        }
+        onCancel={() => returnToList()}
+      />
+    );
+  }
+
+  if (screen.kind === "steps-builder") {
+    return (
+      <PlaceholderScreen
+        title="Passos da ação (em construção)"
+        onBack={returnToList}
+      />
+    );
   }
 
   if (screen.kind === "execute") {
