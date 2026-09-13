@@ -9,6 +9,11 @@ let tmpDir: string
 const handlers = new Map<string, Handler>()
 const sentMessages: { channel: string; payload: unknown }[] = []
 let whenReadyResolve: () => void
+const runExecutionMock = vi.fn()
+
+vi.mock('./automationEngine', () => ({
+  runExecution: (...args: unknown[]) => runExecutionMock(...args),
+}))
 
 vi.mock('electron', () => {
   return {
@@ -61,6 +66,7 @@ async function loadMain() {
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cronos-actions-ipc-test-'))
+  runExecutionMock.mockReset()
 })
 
 afterEach(() => {
@@ -149,5 +155,20 @@ describe('actions IPC handlers', () => {
     expect(warning?.payload).toBe(
       'Não foi possível carregar suas ações salvas. Um novo arquivo será criado ao salvar a próxima ação.'
     )
+  })
+
+  it('test_executionRunHandler_delegatesToAutomationEngineWithRequestPayload', async () => {
+    await loadMain()
+    runExecutionMock.mockResolvedValue({ success: true, actionName: 'Ação' })
+
+    const handler = handlers.get('execution:run')!
+    const request = { actionId: 'a1', manualValues: { s1: 'valor' } }
+    const result = await handler(null, request)
+
+    expect(runExecutionMock).toHaveBeenCalledWith(
+      request,
+      expect.objectContaining({ getWindow: expect.any(Function), openAppOnDisplay: expect.any(Function) })
+    )
+    expect(result).toEqual({ success: true, actionName: 'Ação' })
   })
 })

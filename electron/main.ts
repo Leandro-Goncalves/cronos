@@ -6,6 +6,7 @@ import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import * as actionsStore from './actionsStore'
+import * as automationEngine from './automationEngine'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -187,7 +188,7 @@ function delay(ms: number) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
 }
 
-async function openAppOnDisplay(appPath: string, iconPath: string, displayBounds?: DisplayBounds): Promise<boolean> {
+export async function openAppOnDisplay(appPath: string, iconPath: string, displayBounds?: DisplayBounds): Promise<boolean> {
   if (await focusRunningApp(iconPath, displayBounds)) return true
 
   await shell.openPath(appPath)
@@ -352,6 +353,10 @@ ipcMain.handle('actions:list', () => actionsStore.listActions())
 ipcMain.handle('actions:get', (_event, id: string) => actionsStore.getAction(id))
 ipcMain.handle('actions:save', (_event, payload: actionsStore.ActionSavePayload) => actionsStore.saveAction(payload))
 ipcMain.handle('actions:delete', (_event, id: string) => actionsStore.deleteAction(id))
+
+ipcMain.handle('execution:run', (_event, request: automationEngine.ExecutionRequest) =>
+  automationEngine.runExecution(request, { getWindow: () => win, openAppOnDisplay })
+)
 
 let pendingDataWarning = false
 
