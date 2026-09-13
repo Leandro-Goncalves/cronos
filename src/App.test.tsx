@@ -1,19 +1,8 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { captureScreenPosition } from "./lib/captureScreenPosition";
-
-vi.mock("./lib/captureScreenPosition", async () => {
-  const actual = await vi.importActual<typeof import("./lib/captureScreenPosition")>(
-    "./lib/captureScreenPosition"
-  );
-  return {
-    ...actual,
-    captureScreenPosition: vi.fn(),
-  };
-});
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -29,7 +18,8 @@ function mockIpc(
   actionsList: unknown[] = [],
   actionsGet: unknown = null,
   actionsGetById: Record<string, unknown> = {},
-  executionResult: unknown = { success: true, actionName: "Ação alvo" }
+  executionResult: unknown = { success: true, actionName: "Ação alvo" },
+  actionsSaveResult: unknown = { success: true, action: {} }
 ) {
   const listeners: Record<string, IpcListener[]> = {};
   const invoke = vi.fn((channel: string, ...args: unknown[]) => {
@@ -43,6 +33,7 @@ function mockIpc(
     if (channel === "apps:list") return Promise.resolve(oneApp);
     if (channel === "apps:icon") return Promise.resolve(null);
     if (channel === "execution:run") return Promise.resolve(executionResult);
+    if (channel === "actions:save") return Promise.resolve(actionsSaveResult);
     return Promise.resolve(undefined);
   });
   const on = vi.fn((channel: string, listener: IpcListener) => {
@@ -121,7 +112,7 @@ describe("App", () => {
     );
   });
 
-  it("test_basicInfoConfirm_switchesToStepsBuilderPlaceholderWithDraft", async () => {
+  it("test_basicInfoConfirm_switchesToStepsBuilderScreenWithDraft", async () => {
     mockIpc([]);
     render(<App />);
 
@@ -135,8 +126,9 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
 
     expect(
-      await screen.findByText("Passos da ação (em construção)")
+      await screen.findByRole("button", { name: "Adicionar passo" })
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled();
   });
 
   it("test_basicInfoCancel_returnsToActionsListWithoutToast", async () => {
@@ -308,7 +300,7 @@ describe("App", () => {
     );
   });
 
-  async function reachStepsBuilderPlaceholder() {
+  async function reachStepsBuilder() {
     mockIpc([]);
     render(<App />);
 
@@ -320,52 +312,58 @@ describe("App", () => {
     fireEvent.click(await screen.findByText("Notepad"));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
 
-    await screen.findByText("Passos da ação (em construção)");
+    await screen.findByRole("button", { name: "Adicionar passo" });
   }
 
-  it("test_stepsBuilderPlaceholder_simulateCaptureButton_callsCaptureScreenPositionWithDraftValues", async () => {
-    vi.mocked(captureScreenPosition).mockResolvedValue({ status: "cancelled" });
-    await reachStepsBuilderPlaceholder();
-
-    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
-
-    await waitFor(() => {
-      expect(captureScreenPosition).toHaveBeenCalledWith({
-        targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
-        monitorBounds: { x: 0, y: 0, width: 1920, height: 1080 },
-      });
-    });
-  });
-
-  it("test_simulateCapture_onCaptured_showsCapturedPositionText", async () => {
-    vi.mocked(captureScreenPosition).mockResolvedValue({
-      status: "captured",
-      position: { x: 512, y: 340 },
-    });
-    await reachStepsBuilderPlaceholder();
-
-    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
-
-    expect(await screen.findByText("Posição capturada: (512, 340)")).toBeInTheDocument();
-  });
-
-  it("test_simulateCapture_onCancelled_showsCancelledText", async () => {
-    vi.mocked(captureScreenPosition).mockResolvedValue({ status: "cancelled" });
-    await reachStepsBuilderPlaceholder();
-
-    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
-
-    expect(await screen.findByText("Captura cancelada.")).toBeInTheDocument();
-  });
-
-  it("test_simulateCapture_onError_showsExactPrdErrorToast", async () => {
-    vi.mocked(captureScreenPosition).mockResolvedValue({ status: "error" });
-    await reachStepsBuilderPlaceholder();
-
-    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
+  it("test_stepsBuilderScreen_rendersAtStepsBuilderState", async () => {
+    await reachStepsBuilder();
 
     expect(
-      await screen.findByText("Não foi possível abrir Notepad para capturar a posição.")
+      screen.getByRole("button", { name: "Adicionar passo" })
     ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Atraso padrão entre passos (segundos)")
+    ).toBeInTheDocument();
+  });
+
+  it("test_stepsBuilderSave_returnsToActionsListWithToast", async () => {
+    mockIpc([], null, {}, undefined, { success: true, action: {} });
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
+    fireEvent.change(await screen.findByLabelText("Nome da ação"), {
+      target: { value: "Minha ação" },
+    });
+    fireEvent.click(await screen.findByText("Notepad"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await screen.findByRole("button", { name: "Adicionar passo" });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar passo" }));
+    const manualGroup = (await screen.findByText("Manual")).closest(
+      '[data-slot="dropdown-menu-group"]'
+    ) as HTMLElement;
+    fireEvent.click(within(manualGroup).getByText("Digitar"));
+    fireEvent.change(await screen.findByLabelText("Rótulo do campo"), {
+      target: { value: "Nome do cliente" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await screen.findByText("Manual: Nome do cliente");
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(await screen.findByText("Nenhuma ação criada ainda.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ação 'Minha ação' criada com sucesso.")
+    ).toBeInTheDocument();
+  });
+
+  it("test_stepsBuilderCancel_returnsToActionsListWithoutToast", async () => {
+    await reachStepsBuilder();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(await screen.findByText("Nenhuma ação criada ainda.")).toBeInTheDocument();
+    expect(screen.queryByText(/sucesso/)).not.toBeInTheDocument();
   });
 });

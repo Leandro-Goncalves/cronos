@@ -1,9 +1,4 @@
 import { useEffect, useState } from "react";
-import { Toast } from "./components/Toast";
-import {
-  captureScreenPosition,
-  getCaptureErrorMessage,
-} from "./lib/captureScreenPosition";
 import {
   ActionsListScreen,
   type FullActionRecord,
@@ -18,6 +13,7 @@ import {
   type ExecutionRequest,
 } from "./screens/ExecuteActionScreen";
 import { RunningScreen } from "./screens/RunningScreen";
+import { StepsBuilderScreen } from "./screens/StepsBuilderScreen";
 
 type Screen =
   | { kind: "actions-list" }
@@ -96,9 +92,12 @@ function App() {
 
   if (screen.kind === "steps-builder") {
     return (
-      <StepsBuilderPlaceholderScreen
+      <StepsBuilderScreen
+        mode={screen.mode}
+        actionId={screen.actionId}
         draft={screen.draft}
-        onBack={returnToList}
+        onSave={(toastMessage) => returnToList(toastMessage)}
+        onCancel={() => returnToList()}
       />
     );
   }
@@ -124,63 +123,6 @@ function App() {
       onEdit={goToEditWizard}
       onExecute={goToExecute}
     />
-  );
-}
-
-type CaptureOutcome =
-  | { kind: "captured"; x: number; y: number }
-  | { kind: "cancelled" };
-
-function StepsBuilderPlaceholderScreen({
-  draft,
-  onBack,
-}: {
-  draft: DraftActionBasicInfo;
-  onBack: (toastMessage?: string) => void;
-}) {
-  const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
-
-  async function handleSimulateCapture() {
-    setOutcome(null);
-    setErrorToast(null);
-    const result = await captureScreenPosition({
-      targetApp: draft.targetApp,
-      monitorBounds: draft.monitorBounds,
-    });
-    if (result.status === "captured" && result.position) {
-      setOutcome({ kind: "captured", x: result.position.x, y: result.position.y });
-    } else if (result.status === "cancelled") {
-      setOutcome({ kind: "cancelled" });
-    } else {
-      setErrorToast(getCaptureErrorMessage(draft.targetApp.name));
-    }
-  }
-
-  return (
-    <div className="relative mx-auto flex h-screen max-w-xl flex-col items-center justify-center gap-4 p-6">
-      <p className="text-sm text-muted-foreground">
-        Passos da ação (em construção)
-      </p>
-      <button className="text-sm underline" onClick={() => onBack()}>
-        Voltar
-      </button>
-      <button
-        className="text-sm underline"
-        onClick={handleSimulateCapture}
-      >
-        Simular captura de posição (temporário)
-      </button>
-      {outcome?.kind === "captured" && (
-        <p className="text-xs text-muted-foreground">
-          Posição capturada: ({outcome.x}, {outcome.y})
-        </p>
-      )}
-      {outcome?.kind === "cancelled" && (
-        <p className="text-xs text-muted-foreground">Captura cancelada.</p>
-      )}
-      <Toast message={errorToast} />
-    </div>
   );
 }
 
