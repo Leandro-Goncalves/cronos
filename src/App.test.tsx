@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { captureScreenPosition } from "./lib/captureScreenPosition";
+
+vi.mock("./lib/captureScreenPosition", async () => {
+  const actual = await vi.importActual<typeof import("./lib/captureScreenPosition")>(
+    "./lib/captureScreenPosition"
+  );
+  return {
+    ...actual,
+    captureScreenPosition: vi.fn(),
+  };
+});
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -301,5 +306,66 @@ describe("App", () => {
       "aria-pressed",
       "true"
     );
+  });
+
+  async function reachStepsBuilderPlaceholder() {
+    mockIpc([]);
+    render(<App />);
+
+    await screen.findByText("Nenhuma ação criada ainda.");
+    fireEvent.click(screen.getAllByRole("button", { name: "Adicionar ação" })[0]);
+    fireEvent.change(await screen.findByLabelText("Nome da ação"), {
+      target: { value: "Minha ação" },
+    });
+    fireEvent.click(await screen.findByText("Notepad"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await screen.findByText("Passos da ação (em construção)");
+  }
+
+  it("test_stepsBuilderPlaceholder_simulateCaptureButton_callsCaptureScreenPositionWithDraftValues", async () => {
+    vi.mocked(captureScreenPosition).mockResolvedValue({ status: "cancelled" });
+    await reachStepsBuilderPlaceholder();
+
+    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
+
+    await waitFor(() => {
+      expect(captureScreenPosition).toHaveBeenCalledWith({
+        targetApp: { name: "Notepad", path: "C:\\Notepad.lnk", iconPath: "C:\\notepad.exe" },
+        monitorBounds: { x: 0, y: 0, width: 1920, height: 1080 },
+      });
+    });
+  });
+
+  it("test_simulateCapture_onCaptured_showsCapturedPositionText", async () => {
+    vi.mocked(captureScreenPosition).mockResolvedValue({
+      status: "captured",
+      position: { x: 512, y: 340 },
+    });
+    await reachStepsBuilderPlaceholder();
+
+    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
+
+    expect(await screen.findByText("Posição capturada: (512, 340)")).toBeInTheDocument();
+  });
+
+  it("test_simulateCapture_onCancelled_showsCancelledText", async () => {
+    vi.mocked(captureScreenPosition).mockResolvedValue({ status: "cancelled" });
+    await reachStepsBuilderPlaceholder();
+
+    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
+
+    expect(await screen.findByText("Captura cancelada.")).toBeInTheDocument();
+  });
+
+  it("test_simulateCapture_onError_showsExactPrdErrorToast", async () => {
+    vi.mocked(captureScreenPosition).mockResolvedValue({ status: "error" });
+    await reachStepsBuilderPlaceholder();
+
+    fireEvent.click(screen.getByText("Simular captura de posição (temporário)"));
+
+    expect(
+      await screen.findByText("Não foi possível abrir Notepad para capturar a posição.")
+    ).toBeInTheDocument();
   });
 });
