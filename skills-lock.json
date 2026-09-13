@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "electron-playwright-cli": {
+      "source": "spacecake-labs/electron-playwright-cli",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "computedHash": "c7e6376f116183dec74bcfcf9f01e86a1a4229d05f7cbe3b51ef971d72fb4460"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
