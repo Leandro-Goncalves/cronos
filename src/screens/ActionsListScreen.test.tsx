@@ -152,7 +152,7 @@ describe("ActionsListScreen", () => {
     expect(invoke).toHaveBeenCalledWith("actions:get", "a1");
   });
 
-  it("test_deleteIcon_opensPlaceholderConfirmationNamingTheAction", async () => {
+  it("test_deleteIcon_opensConfirmationNamingTheAction", async () => {
     const invoke = mockIpc({
       "actions:list": () => [makeAction({ id: "a1", name: "Ação para excluir" })],
     });
@@ -167,6 +167,126 @@ describe("ActionsListScreen", () => {
     const confirmation = screen.getByTestId("delete-confirmation");
     expect(confirmation).toHaveTextContent("Ação para excluir");
     expect(invoke).not.toHaveBeenCalledWith("actions:delete", expect.anything());
+  });
+
+  it("test_deleteConfirm_invokesActionsDeleteWithCorrectId", async () => {
+    const invoke = mockIpc({
+      "actions:list": () => [makeAction({ id: "a1", name: "Ação para excluir" })],
+      "actions:delete": () => ({ success: true }),
+    });
+
+    render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+
+    await screen.findByText("Ação para excluir");
+    fireEvent.click(screen.getByLabelText("Excluir Ação para excluir"));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("actions:delete", "a1");
+    });
+  });
+
+  it("test_deleteConfirm_success_removesActionFromListAndShowsSuccessToast", async () => {
+    mockIpc({
+      "actions:list": () => [makeAction({ id: "a1", name: "Ação para excluir" })],
+      "actions:delete": () => ({ success: true }),
+    });
+
+    render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+
+    await screen.findByText("Ação para excluir");
+    fireEvent.click(screen.getByLabelText("Excluir Ação para excluir"));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Ação para excluir")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Ação 'Ação para excluir' excluída com sucesso.")
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("delete-confirmation")).not.toBeInTheDocument();
+  });
+
+  it("test_deleteCancel_leavesActionUnchangedInList", async () => {
+    const invoke = mockIpc({
+      "actions:list": () => [makeAction({ id: "a1", name: "Ação para excluir" })],
+    });
+
+    render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+
+    await screen.findByText("Ação para excluir");
+    fireEvent.click(screen.getByLabelText("Excluir Ação para excluir"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(invoke).not.toHaveBeenCalledWith("actions:delete", expect.anything());
+    expect(screen.getByText("Ação para excluir")).toBeInTheDocument();
+    expect(screen.queryByTestId("delete-confirmation")).not.toBeInTheDocument();
+  });
+
+  it("test_deleteConfirm_failure_keepsActionVisibleClosesDialogAndShowsErrorToast", async () => {
+    mockIpc({
+      "actions:list": () => [makeAction({ id: "a1", name: "Ação para excluir" })],
+      "actions:delete": () => ({
+        success: false,
+        error: "Não foi possível excluir a ação. Tente novamente.",
+      }),
+    });
+
+    render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+
+    await screen.findByText("Ação para excluir");
+    fireEvent.click(screen.getByLabelText("Excluir Ação para excluir"));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("delete-confirmation")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Ação para excluir")).toBeInTheDocument();
+    expect(
+      screen.getByText("Não foi possível excluir a ação. Tente novamente.")
+    ).toBeInTheDocument();
+  });
+
+  it("test_integration_deletedActionRemovedFromF01StoreNoLongerAppearsInF02List", async () => {
+    let call = 0;
+    mockIpc({
+      "actions:list": () => {
+        call += 1;
+        return call === 1
+          ? [
+              makeAction({ id: "a1", name: "Ação 1" }),
+              makeAction({ id: "a2", name: "Ação 2" }),
+            ]
+          : [makeAction({ id: "a1", name: "Ação 1" })];
+      },
+      "actions:delete": () => ({ success: true }),
+    });
+
+    const { unmount } = render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+    await screen.findByText("Ação 2");
+    fireEvent.click(screen.getByLabelText("Excluir Ação 2"));
+    fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Ação 2")).not.toBeInTheDocument();
+    });
+    unmount();
+
+    render(
+      <ActionsListScreen onCreate={vi.fn()} onEdit={vi.fn()} onExecute={vi.fn()} />
+    );
+    await screen.findByText("Ação 1");
+    expect(screen.queryByText("Ação 2")).not.toBeInTheDocument();
   });
 
   it("test_addButton_alwaysVisible_invokesOnCreate", async () => {

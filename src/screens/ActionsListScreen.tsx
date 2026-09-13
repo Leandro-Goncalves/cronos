@@ -118,6 +118,24 @@ export function ActionsListScreen({
     setDeleteRequest({ id: action.id, name: action.name });
   }
 
+  async function handleDeleteConfirm() {
+    if (!deleteRequest) return;
+    const { id, name } = deleteRequest;
+    let result: { success: boolean } | undefined;
+    try {
+      result = await window.ipcRenderer.invoke("actions:delete", id);
+    } catch {
+      result = { success: false };
+    }
+    if (result?.success) {
+      setActions((prev) => prev.filter((action) => action.id !== id));
+      setToastMessage(`Ação '${name}' excluída com sucesso.`);
+    } else {
+      setToastMessage("Não foi possível excluir a ação. Tente novamente.");
+    }
+    setDeleteRequest(null);
+  }
+
   return (
     <div className="relative mx-auto flex h-screen max-w-xl flex-col gap-4 p-6">
       <div className="flex items-center justify-between gap-2">
@@ -246,10 +264,7 @@ export function ActionsListScreen({
             <AlertDialogCancel onClick={() => setDeleteRequest(null)}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => setDeleteRequest(null)}
-            >
+            <AlertDialogAction variant="destructive" onClick={handleDeleteConfirm}>
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
