@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeStep, type StepDraft } from "./steps";
+import { reorderStepsOnDragEnd, summarizeStep, type StepDraft } from "./steps";
 
 describe("summarizeStep", () => {
   it("test_summarizeStep_click", () => {
@@ -49,5 +49,34 @@ describe("summarizeStep", () => {
       label: "Nome do cliente",
     };
     expect(summarizeStep(step)).toBe("Manual: Nome do cliente");
+  });
+});
+
+describe("reorderStepsOnDragEnd", () => {
+  const steps: StepDraft[] = [
+    { id: "1", type: "click", position: { x: 1, y: 1 } },
+    { id: "2", type: "wait", seconds: 3 },
+    { id: "3", type: "manual-type", label: "Nome" },
+  ];
+
+  it("test_reorder_movesActiveToOverPosition", () => {
+    const result = reorderStepsOnDragEnd(steps, {
+      active: { id: "1" },
+      over: { id: "3" },
+    });
+    expect(result.map((s) => s.id)).toEqual(["2", "3", "1"]);
+  });
+
+  it("test_reorder_noOverTarget_returnsUnchanged", () => {
+    const result = reorderStepsOnDragEnd(steps, { active: { id: "1" }, over: null });
+    expect(result).toBe(steps);
+  });
+
+  it("test_reorder_sameActiveAndOver_returnsUnchanged", () => {
+    const result = reorderStepsOnDragEnd(steps, {
+      active: { id: "1" },
+      over: { id: "1" },
+    });
+    expect(result).toBe(steps);
   });
 });

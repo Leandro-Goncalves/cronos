@@ -1,3 +1,5 @@
+import { arrayMove } from "@dnd-kit/sortable";
+
 export interface StepPosition {
   x: number;
   y: number;
@@ -118,4 +120,20 @@ export function summarizeStep(step: StepDraft): string {
     case "manual-type":
       return `Manual: ${step.label}`;
   }
+}
+
+interface DragEndPayload {
+  active: { id: string | number };
+  over: { id: string | number } | null;
+}
+
+export function reorderStepsOnDragEnd(
+  steps: StepDraft[],
+  event: DragEndPayload
+): StepDraft[] {
+  if (!event.over || event.active.id === event.over.id) return steps;
+  const oldIndex = steps.findIndex((step) => step.id === event.active.id);
+  const newIndex = steps.findIndex((step) => step.id === event.over?.id);
+  if (oldIndex === -1 || newIndex === -1) return steps;
+  return arrayMove(steps, oldIndex, newIndex);
 }
