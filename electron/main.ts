@@ -6,6 +6,7 @@ import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import * as actionsStore from './actionsStore'
+import * as captureOverlay from './captureOverlay'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -352,6 +353,37 @@ ipcMain.handle('actions:list', () => actionsStore.listActions())
 ipcMain.handle('actions:get', (_event, id: string) => actionsStore.getAction(id))
 ipcMain.handle('actions:save', (_event, payload: actionsStore.ActionSavePayload) => actionsStore.saveAction(payload))
 ipcMain.handle('actions:delete', (_event, id: string) => actionsStore.deleteAction(id))
+
+function loadOverlayWindow(overlay: BrowserWindow, appName: string) {
+  const query = `capture=1&app=${encodeURIComponent(appName)}`
+  if (VITE_DEV_SERVER_URL) {
+    overlay.loadURL(`${VITE_DEV_SERVER_URL}?${query}`)
+  } else {
+    overlay.loadFile(path.join(RENDERER_DIST, 'index.html'), {
+      query: { capture: '1', app: appName },
+    })
+  }
+}
+
+function getCaptureDeps(): captureOverlay.CaptureDeps {
+  return {
+    openAppOnDisplay,
+    mainWindow: win,
+    loadOverlayWindow,
+  }
+}
+
+ipcMain.handle('capture:start', (_event, request: captureOverlay.CapturePositionRequest) =>
+  captureOverlay.startCapture(request, getCaptureDeps())
+)
+ipcMain.handle('capture:click', (_event, position: { x: number; y: number }) => {
+  captureOverlay.handleOverlayClick(position, getCaptureDeps())
+  return { acknowledged: true }
+})
+ipcMain.handle('capture:cancel', () => {
+  captureOverlay.handleOverlayCancel(getCaptureDeps())
+  return { acknowledged: true }
+})
 
 let pendingDataWarning = false
 
