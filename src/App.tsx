@@ -17,6 +17,7 @@ import {
   ExecuteActionScreen,
   type ExecutionRequest,
 } from "./screens/ExecuteActionScreen";
+import { RunningScreen } from "./screens/RunningScreen";
 
 type Screen =
   | { kind: "actions-list" }
@@ -113,12 +114,7 @@ function App() {
   }
 
   if (screen.kind === "running") {
-    return (
-      <PlaceholderScreen
-        title="Executando ação (em construção)"
-        onBack={returnToList}
-      />
-    );
+    return <RunningScreen request={screen.request} onComplete={returnToList} />;
   }
 
   return (
@@ -128,29 +124,6 @@ function App() {
       onEdit={goToEditWizard}
       onExecute={goToExecute}
     />
-  );
-}
-
-function PlaceholderScreen({
-  title,
-  onBack,
-}: {
-  title: string;
-  onBack: (toastMessage?: string) => void;
-}) {
-  return (
-    <div className="mx-auto flex h-screen max-w-xl flex-col items-center justify-center gap-4 p-6">
-      <p className="text-sm text-muted-foreground">{title}</p>
-      <button className="text-sm underline" onClick={() => onBack()}>
-        Voltar
-      </button>
-      <button
-        className="text-sm underline"
-        onClick={() => onBack("Ação executada com sucesso.")}
-      >
-        Simular sucesso (temporário)
-      </button>
-    </div>
   );
 }
 
